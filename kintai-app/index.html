@@ -1,0 +1,660 @@
+<title>出張・欠勤連絡表</title>
+<meta name="description" content="総務部が毎日作る出張者一覧表と欠勤者連絡表を、AIで入力・印刷できるアプリ">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDPMincho:wght@700&display=swap">
+<style>
+/* 事務机の上の帳票: 左に入力、右に「今日の表」。紙の表の見た目をそのまま画面に再現する */
+:root {
+  --bg: #eef1ee;
+  --paper: #fdfdfb;
+  --ink: #1d2422;
+  --muted: #5b6763;
+  --line: #9aa7a2;
+  --line-soft: #d3dbd7;
+  --accent: #1f5f8b;
+  --accent-ink: #ffffff;
+  --trip: #1f5f8b;
+  --trip-soft: #e3eef6;
+  --absent: #a5422c;
+  --absent-soft: #f7e7e2;
+  --ok: #2d7a46;
+  --focus: #e0a100;
+  --font-body: "BIZ UDPGothic", "Meiryo", "Yu Gothic", sans-serif;
+  --font-title: "BIZ UDPMincho", "Yu Mincho", "MS Mincho", serif;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161b1a; --paper: #1f2624; --ink: #e8eeec; --muted: #a3b0ab;
+    --line: #5b6863; --line-soft: #34403c; --accent: #6fb1e0; --accent-ink: #0d1a24;
+    --trip: #7dbbe6; --trip-soft: #1e3343; --absent: #ec8f78; --absent-soft: #3d2620;
+    --ok: #7fcf98; --focus: #f2c14e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161b1a; --paper: #1f2624; --ink: #e8eeec; --muted: #a3b0ab;
+  --line: #5b6863; --line-soft: #34403c; --accent: #6fb1e0; --accent-ink: #0d1a24;
+  --trip: #7dbbe6; --trip-soft: #1e3343; --absent: #ec8f78; --absent-soft: #3d2620;
+  --ok: #7fcf98; --focus: #f2c14e; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 18px; line-height: 1.6;
+  padding: 0 16px; padding-block: 16px 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1 { font-family: var(--font-title); font-size: 28px; letter-spacing: .08em; }
+h2 { font-size: 21px; }
+h3 { font-size: 18px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* ヘッダー */
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.top .sub { color: var(--muted); font-size: 15px; }
+.status { font-size: 14px; color: var(--muted); padding: 4px 10px; border: 1px solid var(--line-soft); border-radius: 99px; background: var(--paper); }
+.status.ok { color: var(--ok); border-color: var(--ok); }
+
+/* 日付バー */
+.datebar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--paper); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 12px 16px; }
+.datebar .big { font-family: var(--font-title); font-size: 26px; min-width: 0; }
+.datebar input[type=date] { font-size: 18px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); }
+.spacer { flex: 1; }
+
+.btn { border: 1px solid var(--line); background: var(--paper); border-radius: var(--radius); padding: 10px 16px; font-size: 18px; line-height: 1.2; min-height: 48px; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { font-size: 15px; padding: 6px 10px; min-height: 36px; }
+.btn.danger { color: var(--absent); }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 430px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 920px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--paper); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.panel .lead { color: var(--muted); font-size: 15px; margin: 0; }
+.step { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 16px; margin-right: 8px; flex: none; }
+.ph { display: flex; align-items: center; }
+
+textarea { width: 100%; min-height: 150px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); line-height: 1.6; resize: vertical; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: 15px; color: var(--muted); font-weight: 700; }
+.field input, .field select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); min-height: 46px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.toggle { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.toggle button { border: 0; background: var(--paper); padding: 10px; font-weight: 700; min-height: 48px; }
+.toggle button[aria-pressed=true].t-trip { background: var(--trip); color: var(--accent-ink); }
+.toggle button[aria-pressed=true].t-abs { background: var(--absent); color: var(--paper); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--paper); border-radius: 99px; padding: 4px 12px; font-size: 15px; }
+.chip:hover { border-color: var(--absent); color: var(--absent); }
+.msg { font-size: 15px; min-height: 1.6em; margin: 0; }
+.msg.err { color: var(--absent); }
+.msg.good { color: var(--ok); }
+
+/* AI 読み取り結果 */
+.preview { display: grid; gap: 8px; }
+.pcard { border: 1px solid var(--line-soft); border-left: 6px solid var(--trip); border-radius: var(--radius); padding: 10px; display: grid; gap: 8px; }
+.pcard.abs { border-left-color: var(--absent); }
+.pcard .row3 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pcard input, .pcard select { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); font-size: 16px; }
+.pcard .lbl { font-size: 13px; color: var(--muted); }
+
+/* 紙の表 */
+.sheet { background: var(--paper); border: 1px solid var(--line-soft); border-radius: var(--radius); padding: 20px; display: grid; gap: 28px; min-width: 0; }
+.sheet-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sheet-head h2 { font-family: var(--font-title); letter-spacing: .15em; }
+.sheet-head .who { font-family: var(--font-title); font-weight: 700; }
+.tbl-wrap { overflow-x: auto; }
+table.paper { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 560px; }
+table.paper th, table.paper td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: middle; }
+table.paper th { background: color-mix(in srgb, var(--line-soft) 45%, var(--paper)); font-weight: 700; text-align: center; letter-spacing: .3em; font-size: 16px; }
+table.paper td.dept { width: 6.5em; white-space: nowrap; }
+table.paper td.name { width: 7.5em; white-space: nowrap; font-weight: 700; }
+table.paper td.period { width: 9em; white-space: nowrap; }
+table.paper td.ops { width: 1%; white-space: nowrap; text-align: right; }
+table.paper tr.empty td { color: var(--muted); font-size: 15px; text-align: center; padding: 18px; }
+table.paper tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, var(--paper)); }
+.tag { display: inline-block; font-size: 12px; padding: 0 6px; border-radius: 4px; margin-left: 6px; vertical-align: 2px; }
+.tag.cont { background: var(--trip-soft); color: var(--trip); }
+.tag.abs { background: var(--absent-soft); color: var(--absent); }
+.count { font-size: 15px; color: var(--muted); }
+
+.outbar { display: flex; flex-wrap: wrap; gap: 10px; }
+.help { font-size: 15px; color: var(--muted); margin: 0; }
+
+/* 名簿 */
+details.staff summary { cursor: pointer; font-weight: 700; font-size: 18px; }
+.stafflist { display: flex; flex-wrap: wrap; gap: 6px; max-height: 260px; overflow: auto; padding: 4px 0; }
+.stafflist span { border: 1px solid var(--line-soft); border-radius: 99px; padding: 2px 4px 2px 12px; font-size: 15px; display: inline-flex; align-items: center; gap: 6px; }
+.stafflist span small { color: var(--muted); }
+.stafflist button { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 0 6px; }
+.stafflist button:hover { color: var(--absent); }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--paper); padding: 12px 20px; border-radius: var(--radius); font-size: 17px; max-width: calc(100% - 32px); }
+@media (prefers-reduced-motion: no-preference) { .toast { transition: opacity .2s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>出張・欠勤連絡表</h1>
+      <div class="sub">総務部　毎日の「出張者一覧表」と「欠勤者（連絡）」を作ります</div>
+    </div>
+    <span id="status" class="status">読み込み中…</span>
+  </header>
+
+  <div class="datebar">
+    <button class="btn" id="prevDay" aria-label="前の日">◀ 前の日</button>
+    <div class="big" id="bigDate">—</div>
+    <button class="btn" id="nextDay" aria-label="次の日">次の日 ▶</button>
+    <button class="btn" id="today">今日</button>
+    <span class="spacer"></span>
+    <label for="datePick" class="help">日付をえらぶ</label>
+    <input type="date" id="datePick">
+  </div>
+
+  <div class="cols">
+    <!-- 左：入力 -->
+    <div style="display:grid;gap:20px;min-width:0">
+      <section class="panel" id="aiPanel">
+        <div class="ph"><span class="step">1</span><h2>AIにおまかせ入力</h2></div>
+        <p class="lead">電話やメモの内容を、ふだんの言葉のまま書いてください。AIが表に入れる形に直します。</p>
+        <textarea id="aiText" placeholder="例）
+営業の山根さん、東京出張。今日まで
+サービスの守本さんと柴田さん、日比野紙器工業・クラウンパッケージ大阪へ5日まで
+総務の松田さん体調不良で休み
+丸山さん病院
+池田さん午前休"></textarea>
+        <button class="btn primary" id="aiRun">AIで読み取る</button>
+        <p class="msg" id="aiMsg" aria-live="polite"></p>
+        <div class="preview" id="preview" hidden></div>
+        <div class="outbar" id="previewBtns" hidden>
+          <button class="btn primary" id="aiSave">この内容で表に入れる</button>
+          <button class="btn" id="aiCancel">やめる</button>
+        </div>
+      </section>
+
+      <section class="panel" id="formPanel">
+        <div class="ph"><span class="step">2</span><h2 id="formTitle">自分で1人ずつ入れる</h2></div>
+        <div class="toggle" role="group" aria-label="種類">
+          <button type="button" class="t-trip" id="tTrip" aria-pressed="true">出張</button>
+          <button type="button" class="t-abs" id="tAbs" aria-pressed="false">欠勤・休み</button>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fName">氏名</label><input id="fName" list="staffNames" autocomplete="off" placeholder="山根英生"></div>
+          <div class="field"><label for="fDept">所属</label><input id="fDept" list="deptNames" autocomplete="off" placeholder="営業"></div>
+        </div>
+        <div class="field" id="placeField"><label for="fPlace">行先</label><input id="fPlace" autocomplete="off" placeholder="東京"></div>
+        <div class="field" id="reasonField" hidden>
+          <label for="fReason">事由</label>
+          <input id="fReason" autocomplete="off" placeholder="体不調">
+          <div class="chips" id="reasonChips"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="fStart">いつから</label><input type="date" id="fStart"></div>
+          <div class="field"><label for="fEnd">いつまで</label><input type="date" id="fEnd"></div>
+        </div>
+        <div class="outbar">
+          <button class="btn primary" id="fSave">表に入れる</button>
+          <button class="btn" id="fCancel" hidden>直すのをやめる</button>
+        </div>
+        <p class="msg" id="fMsg" aria-live="polite"></p>
+        <datalist id="staffNames"></datalist>
+        <datalist id="deptNames"></datalist>
+      </section>
+
+      <section class="panel">
+        <details class="staff">
+          <summary>社員名簿（<span id="staffCount">0</span>人）</summary>
+          <p class="help" style="margin-top:8px">一度入れた人は自動で名簿に入ります。名簿があると、名前の入力やAIの読み取りが正確になります。</p>
+          <div class="stafflist" id="staffList"></div>
+          <div class="row2">
+            <div class="field"><label for="sName">氏名</label><input id="sName" autocomplete="off"></div>
+            <div class="field"><label for="sDept">所属</label><input id="sDept" list="deptNames" autocomplete="off"></div>
+          </div>
+          <button class="btn" id="sAdd" style="margin-top:8px">名簿に追加</button>
+        </details>
+      </section>
+    </div>
+
+    <!-- 右：今日の表 -->
+    <section class="sheet" aria-label="その日の表">
+      <div>
+        <div class="sheet-head">
+          <h2>出張者一覧表</h2>
+          <span id="tripDate"></span>
+          <span class="who">総務部</span>
+        </div>
+        <div class="tbl-wrap" style="margin-top:10px">
+          <table class="paper" id="tripTable">
+            <thead><tr><th>所属</th><th>氏名</th><th>行　先</th><th>期　間</th><th><span class="sr" aria-label="操作"></span></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="count" id="tripCount"></div>
+      </div>
+
+      <div>
+        <div class="sheet-head">
+          <h2>欠勤者（連絡）</h2>
+          <span id="absDate"></span>
+          <span class="who">総務部</span>
+        </div>
+        <div class="tbl-wrap" style="margin-top:10px">
+          <table class="paper" id="absTable">
+            <thead><tr><th>所属</th><th>氏名</th><th>事　由</th><th><span aria-label="操作"></span></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="count" id="absCount"></div>
+      </div>
+
+      <div style="display:grid;gap:10px">
+        <div class="ph"><span class="step">3</span><h2>できた表を使う</h2></div>
+        <div class="outbar">
+          <button class="btn primary" id="printFile">印刷用ファイルを保存</button>
+          <button class="btn" id="copyText">文章でコピー（メール・チャット用）</button>
+        </div>
+        <p class="help">「印刷用ファイルを保存」→ 保存したファイルをダブルクリックで開くと、いつもの表の形で印刷画面が出ます。<br>前の日から続いている出張・休みは、終わりの日まで毎日自動で表に出ます。</p>
+        <textarea id="copyArea" hidden readonly></textarea>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DEPT_ORDER = ["総務", "営業", "サービス", "組立", "組立一係", "一係", "技術", "製造", "品質", "購買"];
+  const REASONS = ["体不調", "病院", "家事都合", "休み（午前）", "休み（午後）", "免許更新", "有給休暇", "忌引"];
+  const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
+
+  // ---------- 日付の道具 ----------
+  const pad = (n) => String(n).padStart(2, "0");
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parseIso = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const addDays = (s, n) => { const d = parseIso(s); d.setDate(d.getDate() + n); return iso(d); };
+  const wareki = (s) => { const d = parseIso(s); const y = d.getFullYear() - 2018; return `令和${y === 1 ? "元" : y}年${d.getMonth() + 1}月${d.getDate()}日`; };
+  const md = (s) => { const d = parseIso(s); return `${d.getMonth() + 1}月${d.getDate()}日`; };
+  const validIso = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+  let day = iso(new Date());
+
+  // ---------- 保存場所（共有データベース、使えない時はこのパソコンの中） ----------
+  const state = { entries: [], staff: [], mode: "local" };
+  let db = null;
+  const LS = { entries: "kintai.entries", staff: "kintai.staff" };
+  const lsRead = (k) => { try { return JSON.parse(localStorage.getItem(LS[k]) || "[]"); } catch { return []; } };
+  const lsWrite = (k) => { try { localStorage.setItem(LS[k], JSON.stringify(state[k])); } catch {} };
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  async function addDoc(col, data) {
+    if (db) { await db.collection(col).add(data); return; }
+    state[col].push({ id: newId(), ...data }); lsWrite(col); render();
+  }
+  async function setDoc(col, id, data) {
+    if (db) { await db.collection(col).doc(id).set(data); return; }
+    const i = state[col].findIndex((x) => x.id === id);
+    if (i >= 0) state[col][i] = { id, ...data };
+    lsWrite(col); render();
+  }
+  async function delDoc(col, id) {
+    if (db) { await db.collection(col).doc(id).delete(); return; }
+    state[col] = state[col].filter((x) => x.id !== id); lsWrite(col); render();
+  }
+
+  function setStatus(text, ok) { const s = $("status"); s.textContent = text; s.classList.toggle("ok", !!ok); }
+
+  async function initStore() {
+    state.entries = lsRead("entries"); state.staff = lsRead("staff");
+    render();
+    if (!window.claude || !window.claude.use) { setStatus("このパソコンだけに保存中"); return; }
+    try { db = await window.claude.use("db"); } catch { db = null; }
+    if (!db) { setStatus("このパソコンだけに保存中（共有するにはログイン）"); return; }
+    state.mode = "db";
+    setStatus("みんなで共有中", true);
+    db.collection("entries").onSnapshot((snap) => {
+      state.entries = snap.docs.map((d) => ({ id: d.id, ...d.data() })); render();
+    }, () => setStatus("つながりが切れました。ページを開き直してください"));
+    db.collection("staff").onSnapshot((snap) => {
+      state.staff = snap.docs.map((d) => ({ id: d.id, ...d.data() })); renderStaff();
+    }, () => {});
+  }
+
+  // ---------- 名簿 ----------
+  const findStaff = (name) => state.staff.find((s) => s.name === name);
+  async function rememberStaff(name, dept) {
+    name = (name || "").trim(); dept = (dept || "").trim();
+    if (!name) return;
+    const s = findStaff(name);
+    if (!s) await addDoc("staff", { name, dept });
+    else if (dept && s.dept !== dept) await setDoc("staff", s.id, { name, dept });
+  }
+  function deptRank(d) { const i = DEPT_ORDER.indexOf(d); return i < 0 ? 100 : i; }
+
+  function renderStaff() {
+    const list = [...state.staff].sort((a, b) => deptRank(a.dept) - deptRank(b.dept) || (a.dept || "").localeCompare(b.dept || "", "ja") || a.name.localeCompare(b.name, "ja"));
+    $("staffCount").textContent = list.length;
+    const box = $("staffList"); box.textContent = "";
+    for (const s of list) {
+      const sp = document.createElement("span");
+      sp.append(s.name + " ");
+      const sm = document.createElement("small"); sm.textContent = s.dept || "所属なし"; sp.append(sm);
+      const b = document.createElement("button"); b.textContent = "×"; b.title = s.name + "を名簿から消す"; b.setAttribute("aria-label", s.name + "を名簿から消す");
+      b.onclick = () => delDoc("staff", s.id);
+      sp.append(b); box.append(sp);
+    }
+    $("staffNames").innerHTML = ""; for (const s of list) { const o = document.createElement("option"); o.value = s.name; o.label = s.dept || ""; $("staffNames").append(o); }
+    const depts = [...new Set([...DEPT_ORDER, ...state.staff.map((s) => s.dept).filter(Boolean)])];
+    $("deptNames").innerHTML = ""; for (const d of depts) { const o = document.createElement("option"); o.value = d; $("deptNames").append(o); }
+  }
+
+  // ---------- その日の一覧 ----------
+  function forDay(type) {
+    return state.entries
+      .filter((e) => e.type === type && e.start <= day && day <= (e.end || e.start))
+      .sort((a, b) => deptRank(a.dept) - deptRank(b.dept) || (a.dept || "").localeCompare(b.dept || "", "ja") || (a.createdAt || 0) - (b.createdAt || 0));
+  }
+  const absText = (e) => (e.reason || "") + ((e.end && e.end > day) ? `（～${md(e.end)}）` : "");
+
+  function cell(tr, text, cls) { const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.append(td); return td; }
+  function opsCell(tr, e) {
+    const td = cell(tr, "", "ops");
+    const ed = document.createElement("button"); ed.className = "btn small"; ed.textContent = "直す"; ed.onclick = () => startEdit(e);
+    const del = document.createElement("button"); del.className = "btn small danger"; del.textContent = "消す"; del.style.marginLeft = "6px";
+    del.onclick = () => {
+      if (del.dataset.armed) { delDoc("entries", e.id); toast(e.name + "さんを消しました"); return; }
+      del.dataset.armed = "1"; del.textContent = "本当に消す"; setTimeout(() => { if (del.isConnected) { delete del.dataset.armed; del.textContent = "消す"; } }, 4000);
+    };
+    td.append(ed, del);
+  }
+
+  function render() {
+    $("bigDate").textContent = `${wareki(day)}（${WEEK[parseIso(day).getDay()]}）`;
+    $("datePick").value = day;
+    $("tripDate").textContent = wareki(day);
+    $("absDate").textContent = wareki(day);
+
+    const trips = forDay("trip");
+    const tb = $("tripTable").tBodies[0]; tb.textContent = "";
+    let prev = null;
+    for (const e of trips) {
+      const tr = document.createElement("tr");
+      cell(tr, e.dept === prev ? "" : (e.dept || ""), "dept"); prev = e.dept;
+      cell(tr, e.name, "name");
+      cell(tr, e.place || "");
+      const p = cell(tr, `～${md(e.end || e.start)}`, "period");
+      if (e.start < day) { const t = document.createElement("span"); t.className = "tag cont"; t.textContent = "続き"; p.append(t); }
+      opsCell(tr, e); tb.append(tr);
+    }
+    if (!trips.length) tb.innerHTML = `<tr class="empty"><td colspan="5">この日の出張者はいません。左の「AIにおまかせ入力」か「自分で1人ずつ入れる」から追加できます。</td></tr>`;
+    $("tripCount").textContent = trips.length ? `出張 ${trips.length}名` : "";
+
+    const abs = forDay("absent");
+    const ab = $("absTable").tBodies[0]; ab.textContent = "";
+    prev = null;
+    for (const e of abs) {
+      const tr = document.createElement("tr");
+      cell(tr, e.dept === prev ? "" : (e.dept || ""), "dept"); prev = e.dept;
+      cell(tr, e.name, "name");
+      const r = cell(tr, absText(e));
+      if (e.start < day) { const t = document.createElement("span"); t.className = "tag abs"; t.textContent = "続き"; r.append(t); }
+      opsCell(tr, e); ab.append(tr);
+    }
+    if (!abs.length) ab.innerHTML = `<tr class="empty"><td colspan="4">この日の欠勤連絡はありません。</td></tr>`;
+    $("absCount").textContent = abs.length ? `欠勤 ${abs.length}名` : "";
+    renderStaff();
+  }
+
+  // ---------- 日付の移動 ----------
+  function goDay(d) { day = d; if (!editing) { $("fStart").value = day; $("fEnd").value = day; } render(); }
+  $("prevDay").onclick = () => goDay(addDays(day, -1));
+  $("nextDay").onclick = () => goDay(addDays(day, 1));
+  $("today").onclick = () => goDay(iso(new Date()));
+  $("datePick").onchange = (e) => { if (validIso(e.target.value)) goDay(e.target.value); };
+
+  // ---------- 手入力フォーム ----------
+  let fType = "trip", editing = null;
+  function setType(t) {
+    fType = t;
+    $("tTrip").setAttribute("aria-pressed", t === "trip"); $("tAbs").setAttribute("aria-pressed", t === "absent");
+    $("placeField").hidden = t !== "trip"; $("reasonField").hidden = t === "trip";
+  }
+  $("tTrip").onclick = () => setType("trip");
+  $("tAbs").onclick = () => setType("absent");
+  for (const r of REASONS) { const c = document.createElement("button"); c.type = "button"; c.className = "chip"; c.textContent = r; c.onclick = () => { $("fReason").value = r; }; $("reasonChips").append(c); }
+  $("fName").addEventListener("change", () => { const s = findStaff($("fName").value.trim()); if (s && s.dept) $("fDept").value = s.dept; });
+  $("fStart").addEventListener("change", () => { if ($("fEnd").value < $("fStart").value) $("fEnd").value = $("fStart").value; });
+
+  function resetForm() {
+    editing = null;
+    for (const id of ["fName", "fDept", "fPlace", "fReason"]) $(id).value = "";
+    $("fStart").value = day; $("fEnd").value = day;
+    $("formTitle").textContent = "自分で1人ずつ入れる"; $("fSave").textContent = "表に入れる"; $("fCancel").hidden = true;
+  }
+  function startEdit(e) {
+    editing = e;
+    setType(e.type);
+    $("fName").value = e.name || ""; $("fDept").value = e.dept || "";
+    $("fPlace").value = e.place || ""; $("fReason").value = e.reason || "";
+    $("fStart").value = e.start; $("fEnd").value = e.end || e.start;
+    $("formTitle").textContent = `${e.name}さんの内容を直す`; $("fSave").textContent = "直した内容を保存"; $("fCancel").hidden = false;
+    $("formPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    $("fName").focus({ preventScroll: true });
+  }
+  $("fCancel").onclick = () => { resetForm(); $("fMsg").textContent = ""; };
+
+  function cleanEntry(o) {
+    const start = validIso(o.start) ? o.start : day;
+    let end = validIso(o.end) ? o.end : start;
+    if (end < start) end = start;
+    const e = { type: o.type === "absent" ? "absent" : "trip", name: (o.name || "").trim(), dept: (o.dept || "").trim(), start, end, createdAt: o.createdAt || Date.now() };
+    if (e.type === "trip") e.place = (o.place || "").trim(); else e.reason = (o.reason || "").trim();
+    return e;
+  }
+
+  $("fSave").onclick = async () => {
+    const msg = $("fMsg"); msg.className = "msg";
+    const e = cleanEntry({ type: fType, name: $("fName").value, dept: $("fDept").value, place: $("fPlace").value, reason: $("fReason").value, start: $("fStart").value, end: $("fEnd").value, createdAt: editing?.createdAt });
+    if (!e.name) { msg.className = "msg err"; msg.textContent = "氏名を入れてください。"; $("fName").focus(); return; }
+    try {
+      if (editing) await setDoc("entries", editing.id, e); else await addDoc("entries", e);
+      await rememberStaff(e.name, e.dept);
+      msg.className = "msg good"; msg.textContent = `${e.name}さんを${editing ? "直しました" : "表に入れました"}。`;
+      resetForm();
+    } catch (err) { msg.className = "msg err"; msg.textContent = "保存できませんでした。もう一度押してください。"; }
+  };
+
+  // ---------- AI 読み取り ----------
+  let sample = null, previewItems = [];
+  (async () => {
+    if (!window.claude || !window.claude.use) { aiOff("AI入力はClaudeの画面で開いた時だけ使えます。下の「自分で1人ずつ入れる」をお使いください。"); return; }
+    try { sample = await window.claude.use("sample"); } catch { sample = null; }
+    if (!sample) aiOff("今はAI入力が使えません。下の「自分で1人ずつ入れる」をお使いください。");
+  })();
+  function aiOff(text) { $("aiRun").disabled = true; $("aiMsg").textContent = text; }
+
+  function buildPrompt(text) {
+    const d = parseIso(day);
+    const staff = state.staff.map((s) => `${s.name}（${s.dept || "所属不明"}）`).join("、") || "（まだ登録なし）";
+    return `あなたは会社の総務部の事務アシスタントです。下の「メモ」から、出張する人と欠勤（休み）する人を読み取ってください。
+基準日：${day}（${wareki(day)}・${WEEK[d.getDay()]}曜日）
+社員名簿：${staff}
+
+ルール：
+- 「さん」「君」「課長」などは外し、名簿にある人は名簿どおりの氏名と所属にそろえる。苗字だけでも名簿で1人に決まるならフルネームにする。名簿にない人は書かれたまま。
+- 所属が書かれていなければ名簿から補う。分からなければ空文字。
+- 出張は type="trip"、place に行先（会社名・地名をそのまま、複数なら「・」でつなぐ）。
+- 欠勤・休み・遅刻・早退は type="absent"、reason に短い事由（例：体不調、病院、家事都合、免許更新、休み（午前）、休み（午後）、有給休暇、忌引）。体調不良・風邪・熱は「体不調」にする。
+- 日付は YYYY-MM-DD。書かれていなければ start も end も基準日。「〇日まで」は基準日以降で一番近いその日。「明日から」なども基準日から計算する。
+- 1人で1件。同じ内容で複数人なら人数分に分ける。
+- 出張・欠勤と関係ない文は無視する。
+
+JSONだけで答える：
+{"items":[{"type":"trip","name":"","dept":"","place":"","reason":"","start":"YYYY-MM-DD","end":"YYYY-MM-DD"}]}
+
+メモ：
+${text}`;
+  }
+
+  $("aiRun").onclick = async () => {
+    const text = $("aiText").value.trim();
+    const msg = $("aiMsg"); msg.className = "msg";
+    if (!text) { msg.className = "msg err"; msg.textContent = "上の枠に、出張や休みの連絡内容を書いてください。"; return; }
+    if (!sample) return;
+    $("aiRun").disabled = true; msg.textContent = "AIが読み取っています…（数秒〜30秒ほど）";
+    try {
+      const res = await sample.json(buildPrompt(text), { modelTier: "default" });
+      const items = Array.isArray(res?.items) ? res.items : [];
+      previewItems = items.map(cleanEntry).filter((e) => e.name);
+      if (!previewItems.length) { msg.className = "msg err"; msg.textContent = "出張・欠勤の人が見つかりませんでした。名前と内容を書いてもう一度お試しください。"; return; }
+      msg.className = "msg good"; msg.textContent = `${previewItems.length}件 読み取りました。内容を確かめて、よければ「この内容で表に入れる」を押してください。`;
+      showPreview();
+    } catch (e) {
+      msg.className = "msg err";
+      msg.textContent = e?.code === "not_granted" ? "AIの利用が許可されませんでした。下の「自分で1人ずつ入れる」をお使いください。"
+        : e?.code === "rate_limited" ? "AIが混み合っています。1分ほど待ってからもう一度押してください。"
+        : "うまく読み取れませんでした。文章を少し短くして、もう一度押してください。";
+    } finally { $("aiRun").disabled = !sample; }
+  };
+
+  function inp(value, onInput, type) {
+    const i = document.createElement("input"); i.value = value || ""; if (type) i.type = type;
+    i.addEventListener("input", () => onInput(i.value)); return i;
+  }
+  function labeled(text, el) { const w = document.createElement("div"); const l = document.createElement("div"); l.className = "lbl"; l.textContent = text; w.append(l, el); return w; }
+
+  function showPreview() {
+    const box = $("preview"); box.textContent = "";
+    previewItems.forEach((e, idx) => {
+      const c = document.createElement("div"); c.className = "pcard" + (e.type === "absent" ? " abs" : "");
+      const sel = document.createElement("select");
+      for (const [v, t] of [["trip", "出張"], ["absent", "欠勤・休み"]]) { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); }
+      sel.value = e.type; sel.onchange = () => { e.type = sel.value; showPreview(); };
+      const rm = document.createElement("button"); rm.className = "btn small danger"; rm.textContent = "この行を外す";
+      rm.onclick = () => { previewItems.splice(idx, 1); showPreview(); };
+      const r1 = document.createElement("div"); r1.className = "row3";
+      r1.append(labeled("種類", sel), labeled("氏名", inp(e.name, (v) => e.name = v)));
+      const r2 = document.createElement("div"); r2.className = "row3";
+      r2.append(labeled("所属", inp(e.dept, (v) => e.dept = v)),
+        e.type === "trip" ? labeled("行先", inp(e.place, (v) => e.place = v)) : labeled("事由", inp(e.reason, (v) => e.reason = v)));
+      const r3 = document.createElement("div"); r3.className = "row3";
+      r3.append(labeled("いつから", inp(e.start, (v) => e.start = v, "date")), labeled("いつまで", inp(e.end, (v) => e.end = v, "date")));
+      c.append(r1, r2, r3, rm); box.append(c);
+    });
+    box.hidden = !previewItems.length; $("previewBtns").hidden = !previewItems.length;
+  }
+  $("aiCancel").onclick = () => { previewItems = []; showPreview(); $("aiMsg").textContent = ""; };
+  $("aiSave").onclick = async () => {
+    const list = previewItems.map((e) => cleanEntry({ ...e, createdAt: Date.now() })).filter((e) => e.name);
+    $("aiSave").disabled = true;
+    try {
+      for (const e of list) { await addDoc("entries", e); await rememberStaff(e.name, e.dept); }
+      previewItems = []; showPreview(); $("aiText").value = "";
+      $("aiMsg").className = "msg good"; $("aiMsg").textContent = `${list.length}件を表に入れました。右の表を確かめてください。`;
+    } catch { $("aiMsg").className = "msg err"; $("aiMsg").textContent = "保存できませんでした。もう一度押してください。"; }
+    finally { $("aiSave").disabled = false; }
+  };
+
+  // ---------- 出力 ----------
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function printHtml() {
+    const trips = forDay("trip"), abs = forDay("absent");
+    const TR = Math.max(15, trips.length), AR = Math.max(16, Math.ceil(abs.length / 2));
+    let prev = null, tripRows = "";
+    for (let i = 0; i < TR; i++) {
+      const e = trips[i];
+      if (e) { const d = e.dept === prev ? "" : e.dept; prev = e.dept; tripRows += `<tr><td>${esc(d)}</td><td class="n">${esc(e.name)}</td><td class="${(e.place || "").length > 14 ? "sm" : ""}">${esc(e.place)}</td><td class="c">～${md(e.end || e.start)}</td></tr>`; }
+      else tripRows += `<tr><td></td><td></td><td></td><td></td></tr>`;
+    }
+    const left = abs.slice(0, AR), right = abs.slice(AR);
+    const deptShown = (arr, i) => (i > 0 && arr[i - 1].dept === arr[i].dept) ? "" : arr[i].dept;
+    let absRows = "";
+    for (let i = 0; i < AR; i++) {
+      const side = (arr) => { const e = arr[i]; if (!e) return `<td></td><td></td><td></td>`; const t = absText(e); return `<td>${esc(deptShown(arr, i))}</td><td class="n">${esc(e.name)}</td><td class="${t.length > 9 ? "sm" : ""}">${esc(t)}</td>`; };
+      absRows += `<tr>${side(left)}${side(right).replace("<td>", '<td class="gap">')}</tr>`;
+    }
+    const date = wareki(day);
+    return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>出張者・欠勤者 ${date}</title>
+<style>
+@page { size: A4 portrait; margin: 14mm 14mm; }
+body { font-family: "BIZ UDPGothic","Meiryo","MS PGothic",sans-serif; margin: 0; color: #000; }
+.note { background:#fff6d6; border:1px solid #e0c060; padding:10px 14px; margin:10px; font-size:16px; }
+@media print { .note { display:none; } }
+.page { width: 182mm; margin: 0 auto; }
+.h1 { display:flex; justify-content:space-between; align-items:baseline; font-weight:bold; font-size:15pt; margin: 4mm 6mm 2mm; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+th, td { border: 1px solid #000; height: 6.6mm; padding: 0 2mm; font-size: 11.5pt; white-space: nowrap; overflow: hidden; }
+th { font-weight: normal; letter-spacing: .4em; text-align: center; }
+td.n { font-size: 12.5pt; }
+td.c { text-align: center; }
+td.sm { font-size: 8.5pt; }
+td.gap { border-left: 3px double #000; }
+.t2 { margin-top: 24mm; }
+.t2 .meta { display:flex; justify-content:space-between; font-size:13pt; margin: 0 2mm; }
+.t2 .right { text-align:right; font-size:13pt; margin: 2mm 2mm 1mm; }
+.t2 .title { text-align:center; font-size:15pt; letter-spacing:.6em; margin-bottom: 2mm; }
+.abs td, .abs th { height: 6.2mm; font-size: 11pt; }
+</style></head><body>
+<div class="note">このページは自動で印刷画面が開きます。開かない時は <b>Ctrl キーを押しながら P</b> を押してください。</div>
+<div class="page">
+<div class="h1"><span>出張者一覧表</span><span>${date}</span><span>総務部</span></div>
+<table><colgroup><col style="width:11%"><col style="width:18%"><col style="width:46%"><col style="width:25%"></colgroup>
+<thead><tr><th>所属</th><th>氏名</th><th>行　先</th><th>期　間</th></tr></thead><tbody>${tripRows}</tbody></table>
+<div class="t2">
+<div class="meta"><span>各　位</span><span>${date}</span></div>
+<div class="right">総務部</div>
+<div class="title">欠勤者（連絡）</div>
+<table class="abs"><colgroup><col style="width:9%"><col style="width:16%"><col style="width:25%"><col style="width:9%"><col style="width:16%"><col style="width:25%"></colgroup>
+<thead><tr><th>所属</th><th>氏　名</th><th>事　由</th><th class="gap">所属</th><th>氏　名</th><th>事　由</th></tr></thead><tbody>${absRows}</tbody></table>
+</div></div>
+<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});<\/script>
+</body></html>`;
+  }
+
+  $("printFile").onclick = async () => {
+    const html = printHtml();
+    const filename = `出張欠勤_${day}.html`;
+    if (window.claude && window.claude.use) {
+      let dl = null; try { dl = await window.claude.use("downloads"); } catch {}
+      if (dl) {
+        try { await dl.save({ filename, data: html }); toast("保存しました。ファイルを開くと印刷画面が出ます"); }
+        catch (e) { if (e?.code !== "declined") toast("保存できませんでした。もう一度押してください"); }
+        return;
+      }
+    }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([html], { type: "text/html" })); a.download = filename;
+    document.body.append(a); a.click(); a.remove();
+    toast("保存しました。ファイルを開くと印刷画面が出ます");
+  };
+
+  $("copyText").onclick = async () => {
+    const trips = forDay("trip"), abs = forDay("absent");
+    let t = `${wareki(day)}　総務部\n\n【出張者】\n`;
+    t += trips.length ? trips.map((e) => `${e.dept || ""}　${e.name}　${e.place || ""}　～${md(e.end || e.start)}`).join("\n") : "なし";
+    t += `\n\n【欠勤者】\n`;
+    t += abs.length ? abs.map((e) => `${e.dept || ""}　${e.name}　${absText(e)}`).join("\n") : "なし";
+    const area = $("copyArea");
+    try { await navigator.clipboard.writeText(t); toast("コピーしました。メールなどに貼り付けてください"); area.hidden = true; }
+    catch { area.value = t; area.hidden = false; area.focus(); area.select(); toast("下の枠の文字を選んであります。Ctrl + C でコピーしてください"); }
+  };
+
+  // ---------- 名簿の追加 ----------
+  $("sAdd").onclick = async () => {
+    const n = $("sName").value.trim(); if (!n) { $("sName").focus(); return; }
+    await rememberStaff(n, $("sDept").value); $("sName").value = ""; $("sDept").value = ""; toast(n + "さんを名簿に入れました");
+  };
+
+  let tt; function toast(text) { const t = $("toast"); t.textContent = text; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => { t.hidden = true; }, 3500); }
+
+  setType("trip"); resetForm(); initStore();
+})();
+</script>
